@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "karavaani",
+  "version": "1.0",
+  "description": "nettikaravaani homma",
+  "content_scripts": [
+    {
+      "js": [
+        "scripts/karavaani.js"
+      ],
+      "matches": [
+        "https://www.nettikaravaani.com/*"
+      ]
+    }
+  ],
+  "permissions": [
+    "storage"
+  ]
+}
