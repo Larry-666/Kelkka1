@@ -139,21 +139,21 @@ async function getNewToken() {
   }
 
   try {
-    const response = await fetch(url, requestOptions);
-    const result = JSON.parse(await response.text());
+    const response = await fetch(url, requestOptions)
+    const result = JSON.parse(await response.text())
 
     chrome.storage.local.set({ token: result }, function () {
       if (chrome.runtime.lastError) {
-        console.error('ERROR: Token was not set to local storage');
-        alert('Couldn´t set new token to local storage');
+        console.error('ERROR: Token was not set to local storage')
+        alert('Couldn´t set new token to local storage')
       } else {
-        console.log('Token set to local storage');
-        getToken();
+        console.log('Token set to local storage')
+        getToken()
       }
-    });
+    })
   } catch (error) {
-    console.error(error);
-    alert('ERROR: Failed to get new token.');
+    console.error(error)
+    alert('ERROR: Failed to get new token.')
   }
 }
 
