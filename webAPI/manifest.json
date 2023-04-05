@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "vene",
+  "version": "1.0",
+  "description": "nettivene",
+  "content_scripts": [
+    {
+      "js": [
+        "parser.js"
+      ],
+      "matches": [
+        "https://www.nettivene.com/*"
+      ]
+    }
+  ],
+  "permissions": [
+    "storage"
+  ]
+}
