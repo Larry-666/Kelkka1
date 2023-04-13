@@ -26,23 +26,19 @@ async function getListingIds() {
      for (let i = 0; i < listings.length; i++) {
       const url = listings[i].getAttribute('href')
       const itemId = url.substring(url.lastIndexOf('/') + 1)
-        const listingInfo = await getListingInfo(itemId)
-
+      const listingInfo = await getListingInfo(itemId)
       
       const listingHistory = await fetchBoatData(
-        "100",
-        "forsale",
         listingInfo.boatType.id,
         listingInfo.make.id,
-        listingInfo.model?.id,
-        "true",
+        listingInfo.model,
         listingInfo.year - 1,
-        listingInfo.year + 1 
+        listingInfo.year + 1,
+        "false"
       )
-  
       const badge = createBadgeElement(listingHistory)
   
-      listings[i].insertAdjacentElement('beforeend', badge) 
+      listings[i].insertAdjacentElement('afterend', badge) 
       }
  }
 
@@ -57,6 +53,7 @@ async function getListingInfo(id) {
       const data = await response.json()
       return data
 
+
     }
     
     throw new Error('Network response was not ok.')
@@ -70,21 +67,28 @@ async function getListingInfo(id) {
 
 
 async function fetchBoatData(
-  rows,
-  status,
   boatType,
   make,
+  model,
+  yearFrom,
+  yearTo,
+  combineResult
+  
   
 ) {
   const queryParams = new URLSearchParams({
-    rows,
-    status,
     boatType,
     make,
+    model,
+    yearFrom,
+    yearTo,
+    combineResult
+  
 
   })
 
-  const url = `https://api.nettix.fi/rest/boat/search?${queryParams.toString()}`
+  const url = `https://api.nettix.fi/rest/boat/pricing-tool-count?${queryParams.toString()}`
+
 
   try {
     const response = await fetch(url, options)
@@ -100,19 +104,12 @@ async function fetchBoatData(
   }
 }
 
-function getAveragePrice(listings) {
-  let total = 0
-  for (let i = 0; i < listings.length; i++) {
-    total += listings[i].price
-  }
-
-  return (listings.length > 0) ? Math.round((total / listings.length)) : '-'
-}
-
 function createBadgeElement(info) {
   const badge = document.createElement('p')
+  badge.style.marginLeft = "500px"
   badge.style.color = 'red'
-  badge.textContent = `avg = ${getAveragePrice(info)}, # = ${info.length}`
+  badge.textContent = `avg = ${info.expired.all.averagePrice}`
+
   return badge
 }
 
