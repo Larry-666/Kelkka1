@@ -21,7 +21,6 @@ async function getListingIds() {
 
   const listingList = document.getElementById('listingData')
   const listings = listingList.getElementsByClassName("list-card__tricky-link")
-  console.log(listings.length)
    
      for (let i = 0; i < listings.length; i++) {
       const url = listings[i].getAttribute('href')
@@ -34,11 +33,19 @@ async function getListingIds() {
         listingInfo.model,
         listingInfo.year - 1,
         listingInfo.year + 1,
+        listingInfo.enginePower,
+        listingInfo.engineType,
+        listingInfo.engineStroke,
+        listingInfo.engineFuelType,
         "false"
       )
       const badge = createBadgeElement(listingHistory)
+      const badge2 = createBadgeElement2(listingHistory)
+      const badge3 = createBadgeElement3(listingHistory)
   
       listings[i].insertAdjacentElement('afterend', badge) 
+      listings[i].insertAdjacentElement('afterend', badge2) 
+      listings[i].insertAdjacentElement('afterend', badge3) 
       }
  }
 
@@ -72,6 +79,11 @@ async function fetchBoatData(
   model,
   yearFrom,
   yearTo,
+  enginePowerFrom,
+  enginePowerTo,
+  engineType,
+  engineStroke,
+  engineFuelType,
   combineResult
   
   
@@ -82,6 +94,11 @@ async function fetchBoatData(
     model,
     yearFrom,
     yearTo,
+    enginePowerFrom,
+    enginePowerTo,
+    engineType,
+    engineStroke, 
+    engineFuelType,
     combineResult
   
 
@@ -108,10 +125,29 @@ function createBadgeElement(info) {
   const badge = document.createElement('p')
   badge.style.marginLeft = "500px"
   badge.style.color = 'red'
-  badge.textContent = `avg = ${info.expired.all.averagePrice}`
-
+  badge.textContent = `soldDealerAvg = ${info.sold.dealer.averagePrice} €`
   return badge
 }
+
+function createBadgeElement2(info) {
+  const badge2 = document.createElement('p')
+  badge2.style.marginLeft = "500px"
+  badge2.style.color = 'red'
+  badge2.textContent =  `soldSellerAvg = ${info.sold.seller.averagePrice} €`
+  return badge2
+}
+
+function createBadgeElement3(info) {
+  const badge3 = document.createElement('p')
+  badge3.style.marginLeft = "500px"
+  badge3.style.color = 'red'
+  badge3.textContent =  `forsaleSellerAvg = ${info.forsale.seller.averagePrice} €`
+  return badge3
+}
+
+
+
+
 
 
 async function getNewToken() {
