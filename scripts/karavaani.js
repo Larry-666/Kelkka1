@@ -165,6 +165,8 @@ async function getNewToken() {
   try {
     const response = await fetch(url, requestOptions)
     const result = JSON.parse(await response.text())
+    const response = await fetch(url, requestOptions)
+    const result = JSON.parse(await response.text())
 
     chrome.storage.local.set({ token: result }, function () {
       if (chrome.runtime.lastError) {
