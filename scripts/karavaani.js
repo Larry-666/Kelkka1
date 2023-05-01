@@ -3,8 +3,6 @@ let refToken
 
 let token
 
-let pageUrl = window.location.href
-
 let options
 
 let retryCounter = 0
@@ -12,6 +10,7 @@ let retryCounter = 0
 async function getListingIds() {
   const listingList = document.getElementById("listingData")
   const mainBlocks = Array.from(listingList.children).filter(child => child.id && child.id.includes("mainBlock"))
+  const newBadges = []
 
   const listingInfoPromises = mainBlocks.map(mainBlock => {
     const itemId = mainBlock.id.replace("mainBlock", "")
@@ -21,47 +20,12 @@ async function getListingIds() {
   const listingInfoResults = await Promise.all(listingInfoPromises)
 
   const fetchCaravanDataPromises = listingInfoResults.map(async listingInfo => {
-    const yearRequirements = await getYearReq()
-
-    let yearReq
-
-    if (yearRequirements !== undefined && Array.isArray(yearRequirements)) {
-      yearReq = yearRequirements.find(req =>
-        listingInfo.vehicleType.id === req.vehicleType &&
-        listingInfo.make.id === req.make &&
-        (listingInfo.model?.id ?? null) === req.model &&
-        (listingInfo.modelInfo ?? null) === req.modelInfo &&
-        (listingInfo.base?.id ?? null) === req.base
-      )
-    } else {
-      yearReq = null
-    }
-
-    let yearRange
-    let yearMin
-    let yearMax
-
-    if (yearReq) {
-      for (let i = 0; i < yearReq.year_range.length; i++) {
-        if (listingInfo.year >= yearReq.year_range[i][0] && listingInfo.year <= yearReq.year_range[i][1]) {
-          yearRange = yearReq.year_range[i]
-          break
-        }
-      }
-      if (yearRange) {
-        yearMin = yearRange[0]
-        yearMax = yearRange[1]
-      } else {
-        yearMin = listingInfo.year - 1
-        yearMax = listingInfo.year + 1
-      }
-    } else {
-      yearMin = listingInfo.year - 1
-      yearMax = listingInfo.year + 1
-    }
+    const [yearMin, yearMax, kmMin, kmMax] = await getYearAndKm(listingInfo)
 
     return fetchCaravanData(
       "100",
+      "soldDate",
+      "desc",
       "sold",
       listingInfo.vehicleType.id,
       listingInfo.make.id,
@@ -69,8 +33,8 @@ async function getListingIds() {
       listingInfo.modelInfo,
       listingInfo.base?.id,
       "true",
-      listingInfo.kilometers - 10000,
-      listingInfo.kilometers + 10000,
+      kmMin,
+      kmMax,
       yearMin,
       yearMax
     )
@@ -79,9 +43,14 @@ async function getListingIds() {
   const fetchCaravanDataResults = await Promise.all(fetchCaravanDataPromises)
 
   for (let i = 0; i < mainBlocks.length; i++) {
-    const badge = createBadgeElement(fetchCaravanDataResults[i], listingInfoResults[i])
-    mainBlocks[i].insertAdjacentElement("beforeend", badge)
+    const existingBadge = mainBlocks[i].querySelector("p")
+    if (!existingBadge) {
+      const badge = createBadgeElement(fetchCaravanDataResults[i], listingInfoResults[i], mainBlocks[i])
+      mainBlocks[i].insertAdjacentElement('beforeend', badge)
+      newBadges.push(badge)
+    }
   }
+  return newBadges
 }
 
 async function getListingInfo(id) {
@@ -102,6 +71,8 @@ async function getListingInfo(id) {
 
 async function fetchCaravanData(
   rows,
+  sortBy,
+  sortOrder,
   status,
   vehicleType,
   make,
@@ -112,10 +83,13 @@ async function fetchCaravanData(
   kilometersFrom,
   kilometersTo,
   yearFrom,
-  yearTo
+  yearTo,
+  diagnostic
 ) {
   const queryParams = new URLSearchParams({
     rows,
+    sortBy,
+    sortOrder,
     status,
     vehicleType,
     make,
@@ -129,7 +103,9 @@ async function fetchCaravanData(
     yearTo
   })
 
-  console.log(yearFrom + " " + yearTo)
+  if (diagnostic) {
+    console.log(queryParams.toString())
+  }
 
   const url = `https://api.nettix.fi/rest/caravan/search?${queryParams.toString()}`
 
@@ -165,13 +141,11 @@ async function getNewToken() {
   try {
     const response = await fetch(url, requestOptions)
     const result = JSON.parse(await response.text())
-    const response = await fetch(url, requestOptions)
-    const result = JSON.parse(await response.text())
 
-    chrome.storage.local.set({ token: result }, function () {
+    chrome.storage.local.set({ token: result }, () => {
       if (chrome.runtime.lastError) {
         console.error("ERROR: Token was not set to local storage")
-        alert("Couldn't set new token to local storage")
+        alert("Uutta tunnusta ei voitu asettaa paikalliseen tallennustilaan")
       } else {
         console.log("New token set to local storage")
         getToken()
@@ -183,7 +157,7 @@ async function getNewToken() {
 }
 
 async function getToken() {
-  chrome.storage.local.get("token", function (data) {
+  chrome.storage.local.get("token", (data) => {
     if (data && data.token) {
       token = data.token.access_token
       console.log("Token found in local storage: " + token)
@@ -191,7 +165,7 @@ async function getToken() {
         retryCounter++
         checkIfTokenExpired()
       } else {
-        alert("Failed to get token after 3 retries")
+        alert("Tunnuksen haku epäonnistui kolmen yrityksen jälkeen")
       }
     } else {
       console.error("ERROR: No token found in local storage.")
@@ -199,14 +173,14 @@ async function getToken() {
         retryCounter++
         getNewToken()
       } else {
-        alert("Failed to get token after 3 retries.")
+        alert("Tunnuksen haku epäonnistui kolmen yrityksen jälkeen")
       }
     }
   })
 }
 
 function getRefToken() {
-  chrome.storage.local.get("refToken", function (data) {
+  chrome.storage.local.get("refToken", (data) => {
     if (data && data.refToken) {
       refToken = data.refToken
       console.log("Reftoken found in local storage: " + refToken)
@@ -253,7 +227,7 @@ function getAveragePrice(listings) {
   return (listings.length > 0) ? Math.round((total / listings.length)) : "-"
 }
 
-function createBadgeElement(info, listing) {
+function createBadgeElement(info, listing, mainBlock) {
   const badge = document.createElement("p")
   badge.style.color = "white"
   badge.textContent = `avg = ${getAveragePrice(info)}, # = ${info.length}`
@@ -261,7 +235,6 @@ function createBadgeElement(info, listing) {
   badge.style.display = "inline-block"
   badge.style.padding = "5px"
   badge.style.borderRadius = "10px"
-
   badge.style.position = "relative"
   badge.style.cursor = "pointer"
   badge.style.zIndex = "100"
@@ -277,7 +250,7 @@ function createBadgeElement(info, listing) {
   hoverText.style.padding = "5px"
   hoverText.style.borderRadius = "5px"
   hoverText.style.whiteSpace = "nowrap"
-  hoverText.textContent = "Average price / How many results"
+  hoverText.textContent = "Keskihinta / Kuinka monta tulosta"
 
   badge.appendChild(hoverText)
 
@@ -296,86 +269,258 @@ function createBadgeElement(info, listing) {
       infoBox.textContent = "Vehicle Type: " + listing.vehicleType?.fi + ", Make: " + listing.make?.name + ", Model: " + listing.model?.name + ", Model Info: " + listing.modelInfo + ", Base: " + listing.base?.fi
       badge.appendChild(infoBox)
 
-      const yearRequirements = await getYearReq()
+      const [yearMin, yearMax, kmMin, kmMax, req] = await getYearAndKm(listing)
 
-      let yearReq
+      const year = document.createElement("div")
+      year.style.marginTop = "1%"
+      infoBox.appendChild(year)
 
-      if (yearRequirements !== undefined && Array.isArray(yearRequirements)) {
-        yearReq = yearRequirements.find(req =>
-          listing.vehicleType.id === req.vehicleType &&
-          listing.make.id === req.make &&
-          (listing.model?.id ?? null) === req.model &&
-          (listing.modelInfo ?? null) === req.modelInfo &&
-          (listing.base?.id ?? null) === req.base
-        )
-      } else {
-        yearReq = null
-      }
+      const yearText = document.createElement("h3")
+      yearText.textContent = "Vuosi:"
+      year.appendChild(yearText)
 
-      let yearRange
-      let yearMin
-      let yearMax
+      const yearRangeDiv = document.createElement("div")
+      year.appendChild(yearRangeDiv)
 
-      if (yearReq) {
-        for (let i = 0; i < yearReq.year_range.length; i++) {
-          if (listing.year >= yearReq.year_range[i][0] && listing.year <= yearReq.year_range[i][1]) {
-            yearRange = yearReq.year_range[i]
-            break
-          }
-        }
-        if (yearRange) {
-          yearMin = yearRange[0]
-          yearMax = yearRange[1]
+      const yearMinInput = document.createElement("input")
+      yearMinInput.type = "number"
+      yearMinInput.placeholder = "Year From"
+      yearMinInput.value = yearMin
+      yearRangeDiv.appendChild(yearMinInput)
+
+      const yearRangeSeparator = document.createTextNode(" - ")
+      yearRangeDiv.appendChild(yearRangeSeparator)
+
+      const yearMaxInput = document.createElement("input")
+      yearMaxInput.type = "number"
+      yearMaxInput.placeholder = "Year To"
+      yearMaxInput.value = yearMax
+      yearRangeDiv.appendChild(yearMaxInput)
+
+      const yearOkButton = document.createElement("button")
+      yearOkButton.textContent = "OK"
+      yearRangeDiv.appendChild(yearOkButton)
+
+      const yearViewAllButton = document.createElement("button")
+      yearViewAllButton.textContent = "Näytä kaikki"
+      yearRangeDiv.appendChild(yearViewAllButton)
+
+      const km = document.createElement("div")
+      km.style.marginTop = "1%"
+      infoBox.appendChild(km)
+
+      const kmText = document.createElement("h3")
+      kmText.textContent = "Kilometrit:"
+      km.appendChild(kmText)
+
+      const kmRangeDiv = document.createElement("div")
+      km.appendChild(kmRangeDiv)
+
+      const kmMinInput = document.createElement("input")
+      kmMinInput.type = "text"
+      kmMinInput.value = kmMin.toLocaleString("fi-FI")
+      kmMinInput.dataset.value = kmMin
+      kmRangeDiv.appendChild(kmMinInput)
+
+      const kmDash = document.createTextNode(" - ")
+      kmRangeDiv.appendChild(kmDash)
+
+      const kmMaxInput = document.createElement("input")
+      kmMaxInput.type = "text"
+      kmMaxInput.value = kmMax.toLocaleString("fi-FI")
+      kmMaxInput.dataset.value = kmMax
+      kmRangeDiv.appendChild(kmMaxInput)
+
+      const kmOkButton = document.createElement("button")
+      kmOkButton.textContent = "OK"
+      kmRangeDiv.appendChild(kmOkButton)
+
+      const kmViewAllButton = document.createElement("button")
+      kmViewAllButton.textContent = "Näytä kaikki"
+      kmRangeDiv.appendChild(kmViewAllButton)
+
+      const reloadButtonWrapper = document.createElement("div")
+      reloadButtonWrapper.style.textAlign = "center"
+      infoBox.appendChild(reloadButtonWrapper)
+
+      const reloadButton = document.createElement("button")
+      reloadButton.textContent = "lataa nämä tiedot uudelleen"
+      reloadButton.style.marginTop = "1%"
+      reloadButtonWrapper.appendChild(reloadButton)
+
+      yearOkButton.addEventListener("click", async () => {
+        let yearMinValue = Number(yearMinInput.value)
+        let yearMaxValue = Number(yearMaxInput.value)
+
+        if (yearMinValue > yearMaxValue) {
+          [yearMinValue, yearMaxValue] = [yearMaxValue, yearMinValue]
+          const newYearRange = [yearMinValue, yearMaxValue]
+          const newYearRequirements = await updateRequirements(listing, newYearRange, undefined)
+
+          chrome.storage.local.set({ requirements: newYearRequirements }, () => {
+            if (chrome.runtime.lastError) {
+              console.error("ERROR: requirements was not set to local storage")
+              alert("Ei voitu asettaa uusia vuosi vaatimuksia paikalliseen tallennustilaan")
+            } else {
+              console.log("requirements set to local storage")
+              req.year_range.push(newYearRange)
+            }
+          })
         } else {
-          yearMin = listing.year - 1
-          yearMax = listing.year + 1
+          const newYearRange = [yearMinValue, yearMaxValue]
+          const newYearRequirements = await updateRequirements(listing, newYearRange, undefined)
+
+          chrome.storage.local.set({ requirements: newYearRequirements }, () => {
+            if (chrome.runtime.lastError) {
+              console.error("ERROR: requirements was not set to local storage")
+              alert("Ei voitu asettaa uusia vuosi vaatimuksia paikalliseen tallennustilaan")
+            } else {
+              console.log("requirements set to local storage")
+              req.year_range.push(newYearRange)
+            }
+          })
         }
-      } else {
-        yearMin = listing.year - 1
-        yearMax = listing.year + 1
-      }
+        document.dispatchEvent(new Event('click'))
+        setTimeout(() => {
+          badge.click()
+        }, 100)
+      })
 
-      const input1 = document.createElement("input")
-      input1.type = "number"
-      input1.placeholder = "yearfrom"
-      input1.value = yearMin
-      infoBox.appendChild(input1)
+      yearViewAllButton.addEventListener("click", () => {
+        if (shouldAddYearRanges) {
+          const viewAll = document.createElement("div")
+          viewAll.classList.add("viewAll")
+          yearRangeDiv.appendChild(viewAll)
 
-      const dash = document.createTextNode(" - ")
-      infoBox.appendChild(dash)
+          if (req) {
+            for (let i = 0; i < req.year_range.length; i++) {
+              if (req.year_range) {
+                let yearRange = req.year_range[i]
 
-      const input2 = document.createElement("input")
-      input2.type = "number"
-      input2.placeholder = "yearTo"
-      input2.value = yearMax
-      infoBox.appendChild(input2)
+                const value = document.createElement("h3")
+                const remove = document.createElement("button")
+                const valueRemovePair = document.createElement("div")
 
-      const okButton = document.createElement("button")
-      okButton.textContent = "OK"
-      infoBox.appendChild(okButton)
+                valueRemovePair.style.display = "flex"
+                valueRemovePair.style.flexDirection = "row"
+                yearRangeDiv.appendChild(valueRemovePair)
 
-      okButton.addEventListener("click", async () => {
+                value.setAttribute("id", "value " + i)
+                value.textContent = yearRange[0] + " - " + yearRange[1]
+                valueRemovePair.appendChild(value)
 
-        value1 = Number(input1.value)
-        value2 = Number(input2.value)
+                remove.textContent = "Poista"
+                valueRemovePair.appendChild(remove)
 
-
-        const newYearRange = [value1, value2]
-
-
-        const newYearRequirements = await updateYearRequirements(listing, newYearRange)
-
-
-        chrome.storage.local.set({ yearRequirements: newYearRequirements }, function () {
-          if (chrome.runtime.lastError) {
-            console.error("ERROR: newYearRequirements was not set to local storage")
-            alert("Couldn't set new newYearRequirements to local storage")
-          } else {
-            console.log("newYearRequirements set to local storage")
-            console.log(newYearRequirements)
+                remove.addEventListener("click", async () => {
+                  await removeRequirements(listing, yearRange, undefined)
+                  valueRemovePair.remove()
+                })
+              }
+            }
+            shouldAddYearRanges = false
           }
+        }
+      })
+
+      kmOkButton.addEventListener("click", async () => {
+        let kmMinValue = Number(kmMaxInput.dataset.value)
+        let kmMaxValue = Number(kmMinInput.dataset.value)
+
+        if (kmMinValue > kmMaxValue) {
+          [kmMinValue, kmMaxValue] = [kmMaxValue, kmMinValue]
+          const newkmRange = [kmMinValue, kmMaxValue]
+          const newkmRequirements = await updateRequirements(listing, undefined, newkmRange)
+
+          chrome.storage.local.set({ requirements: newkmRequirements }, () => {
+            if (chrome.runtime.lastError) {
+              console.error("ERROR: requirements was not set to local storage")
+              alert("Ei voitu asettaa uusia vuosi vaatimuksia paikalliseen tallennustilaan")
+            } else {
+              console.log("requirements set to local storage")
+              req.year_range.push(newkmRange)
+            }
+          })
+        } else {
+          const newkmRange = [kmMinValue, kmMaxValue]
+          const newkmRequirements = await updateRequirements(listing, undefined, newkmRange)
+
+          chrome.storage.local.set({ requirements: newkmRequirements }, () => {
+            if (chrome.runtime.lastError) {
+              console.error("ERROR: requirements was not set to local storage")
+              alert("Ei voitu asettaa uusia vuosi vaatimuksia paikalliseen tallennustilaan")
+            } else {
+              console.log("requirements set to local storage")
+              req.year_range.push(newkmRange)
+            }
+          })
+        }
+        document.dispatchEvent(new Event('click'))
+        setTimeout(() => {
+          badge.click()
+        }, 100)
+      })
+
+      kmViewAllButton.addEventListener("click", () => {
+        if (shouldAddkmRanges) {
+          const viewAll = document.createElement("div")
+          viewAll.classList.add("viewAll")
+          kmRangeDiv.appendChild(viewAll)
+
+          if (req) {
+            for (let i = 0; i < req.km_range.length; i++) {
+              if (req.km_range) {
+                let kmRange = req.km_range[i]
+
+                const value = document.createElement("h3")
+                const remove = document.createElement("button")
+                const valueRemovePair = document.createElement("div")
+
+                valueRemovePair.style.display = "flex"
+                valueRemovePair.style.flexDirection = "row"
+                kmRangeDiv.appendChild(valueRemovePair)
+
+                value.setAttribute("id", "value " + i)
+                value.textContent = kmRange[0].toLocaleString("fi-FI") + " - " + kmRange[1].toLocaleString("fi-FI")
+                valueRemovePair.appendChild(value)
+
+                remove.textContent = "Poista"
+                valueRemovePair.appendChild(remove)
+
+                remove.addEventListener("click", async () => {
+                  await removeRequirements(listing, undefined, kmRange)
+                  valueRemovePair.remove()
+                })
+              }
+            }
+          }
+          shouldAddkmRanges = false
+        }
+      })
+
+      kmMinInput.addEventListener("input", () => {
+        const numericValue = kmMinInput.value.replace(/[^0-9]/g, "")
+        kmMinInput.dataset.value = numericValue
+        kmMinInput.value = Number(numericValue).toLocaleString("fi-FI")
+      })
+
+      kmMaxInput.addEventListener("input", () => {
+        const numericValue = kmMaxInput.value.replace(/[^0-9]/g, "")
+        kmMaxInput.dataset.value = numericValue
+        kmMaxInput.value = Number(numericValue).toLocaleString("fi-FI")
+      })
+
+      reloadButton.addEventListener("click", () => {
+        badge.remove()
+        reloadListing(listing, mainBlock).then((newBadges) => {
+          newBadges.forEach((badge) => {
+            badge.click()
+          })
         })
       })
+
+      let shouldAddYearRanges = true
+      let shouldAddkmRanges = true
     }
   })
 
@@ -391,58 +536,221 @@ function createBadgeElement(info, listing) {
   return badge
 }
 
-async function updateYearRequirements(listingInfo, year_range) {
-  let yearRequirements = await getYearReq()
-  console.log(yearRequirements)
-  console.log(listingInfo)
+async function updateRequirements(listingInfo, year_range, km_range) {
+  let requirements = await getReq()
 
-
-  const existingYearRequirement = yearRequirements.find((yearRequirement) => {
+  const existingRequirement = requirements.find((req) => {
     return (
-      yearRequirement.vehicleType === listingInfo.vehicleType.id &&
-      yearRequirement.make === listingInfo.make.id &&
-      yearRequirement.model === (listingInfo.model?.id ?? null) &&
-      yearRequirement.base === (listingInfo.base?.id ?? null) &&
-      yearRequirement.modelInfo === (listingInfo.modelInfo ?? null)
+      req.vehicleType === listingInfo.vehicleType.id &&
+      req.make === listingInfo.make.id &&
+      req.model === (listingInfo.model?.id ?? null) &&
+      req.base === (listingInfo.base?.id ?? null) &&
+      req.modelInfo === (listingInfo.modelInfo ?? null)
     )
   })
 
-  if (existingYearRequirement) {
-    existingYearRequirement.year_range.push(year_range)
+  if (existingRequirement && year_range) {
+    existingRequirement.year_range.push(year_range)
+  } else if (existingRequirement && km_range) {
+    existingRequirement.km_range.push(km_range)
   } else {
-    yearRequirements.push({
+    requirements.push({
       vehicleType: listingInfo.vehicleType.id,
       make: listingInfo.make.id,
       model: listingInfo.model?.id ?? null,
       base: listingInfo.base?.id ?? null,
       modelInfo: listingInfo.modelInfo ?? null,
-      year_range: [year_range]
+      year_range: year_range ? [year_range] : [],
+      km_range: km_range ? [km_range] : []
     })
   }
-  return (yearRequirements)
+  return (requirements)
+}
+
+async function removeRequirements(listingInfo, yearRange, kmRange) {
+  let requirements = await getReq()
+
+  if (kmRange) {
+    const existingRequirement = requirements.find((kmRequirement) => {
+      return (
+        kmRequirement.vehicleType === listingInfo.vehicleType.id &&
+        kmRequirement.make === listingInfo.make.id &&
+        kmRequirement.model === (listingInfo.model?.id ?? null) &&
+        kmRequirement.base === (listingInfo.base?.id ?? null) &&
+        kmRequirement.modelInfo === (listingInfo.modelInfo ?? null)
+      )
+    })
+
+    existingRequirement.km_range = existingRequirement.km_range.filter(
+      range => !(range[0] === kmRange[0] && range[1] === kmRange[1])
+    )
+
+    requirements.forEach((req) => {
+      if (
+        req.make === existingRequirement.make &&
+        req.model === existingRequirement.model &&
+        req.vehicleType === existingRequirement.vehicleType &&
+        req.base === existingRequirement.base &&
+        req.modelInfo === existingRequirement.modelInfo
+      ) {
+        req.km_range = existingRequirement.km_range
+      }
+    })
+  }
+
+  if (yearRange) {
+    const existingRequirement = requirements.find((yearRequirement) => {
+      return (
+        yearRequirement.vehicleType === listingInfo.vehicleType.id &&
+        yearRequirement.make === listingInfo.make.id &&
+        yearRequirement.model === (listingInfo.model?.id ?? null) &&
+        yearRequirement.base === (listingInfo.base?.id ?? null) &&
+        yearRequirement.modelInfo === (listingInfo.modelInfo ?? null)
+      )
+    })
+
+    existingRequirement.year_range = existingRequirement.year_range.filter(
+      range => !(range[0] === yearRange[0] && range[1] === yearRange[1])
+    )
+
+    requirements.forEach((req) => {
+      if (
+        req.make === existingRequirement.make &&
+        req.model === existingRequirement.model &&
+        req.vehicleType === existingRequirement.vehicleType &&
+        req.base === existingRequirement.base &&
+        req.modelInfo === existingRequirement.modelInfo
+      ) {
+        req.year_range = existingRequirement.year_range
+      }
+    })
+  }
+
+  chrome.storage.local.set({ requirements: requirements }, () => {
+    if (chrome.runtime.lastError) {
+      console.error("ERROR: requirements was not set to local storage")
+      alert("Ei voitu asettaa uusia vuosi vaatimuksia paikalliseen tallennustilaan")
+    } else {
+      console.log("requirements set to local storage")
+    }
+  })
+}
+
+async function getReq() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get("requirements", (data) => {
+      if (Array.isArray(data.requirements)) {
+        resolve(data.requirements)
+      } else {
+        resolve([])
+      }
+    })
+  })
+}
+
+async function getYearAndKm(listing) {
+  const yearRequirements = await getReq()
+
+  let req
+
+  if (yearRequirements) {
+    req = yearRequirements.find(req =>
+      listing.vehicleType.id === req.vehicleType &&
+      listing.make.id === req.make &&
+      (listing.model?.id ?? null) === req.model &&
+      (listing.modelInfo ?? null) === req.modelInfo &&
+      (listing.base?.id ?? null) === req.base
+    )
+  } else {
+    req = null
+  }
+
+  let yearRange
+  let yearMin
+  let yearMax
+  let kmRange
+  let kmMin
+  let kmMax
+
+  if (req) {
+    for (let i = 0; i < req.year_range.length; i++) {
+      if (listing.year >= req.year_range[i][0] && listing.year <= req.year_range[i][1]) {
+        yearRange = req.year_range[i]
+        break
+      }
+    }
+
+    if (yearRange) {
+      yearMin = yearRange[0]
+      yearMax = yearRange[1]
+    } else {
+      yearMin = listing.year - 1
+      yearMax = listing.year + 1
+    }
+  } else {
+    yearMin = listing.year - 1
+    yearMax = listing.year + 1
+  }
+
+  if (req) {
+    for (let i = 0; i < req.km_range.length; i++) {
+      if (listing.kilometers >= req.km_range[i][0] && listing.kilometers <= req.km_range[i][1]) {
+        kmRange = req.km_range[i]
+        break
+      }
+    }
+
+    if (kmRange) {
+      kmMin = kmRange[0]
+      kmMax = kmRange[1]
+    } else {
+      kmMin = listing.kilometers - 10000
+      kmMax = listing.kilometers + 10000
+    }
+  } else {
+    kmMin = listing.kilometers - 10000
+    kmMax = listing.kilometers + 10000
+  }
+
+  return ([yearMin, yearMax, kmMin, kmMax, req])
+}
+
+async function reloadListing(listing, mainBlock) {
+  const [yearMin, yearMax, kmMin, kmMax] = await getYearAndKm(listing)
+
+  const fetchCaravanDataResult = await fetchCaravanData(
+    "100",
+    "soldDate",
+    "desc",
+    "sold",
+    listing.vehicleType.id,
+    listing.make.id,
+    listing.model?.id,
+    listing.modelInfo,
+    listing.base?.id,
+    "true",
+    kmMin,
+    kmMax,
+    yearMin,
+    yearMax,
+    true
+  )
+
+  const badge = createBadgeElement(fetchCaravanDataResult, listing, mainBlock)
+  mainBlock.insertAdjacentElement('beforeend', badge)
+  const newBadges = [badge]
+
+  return newBadges
 }
 
 function checkIfPageChange() {
-
+  let pageUrl = window.location.href
   setInterval(() => {
     if (window.location.href !== pageUrl) {
       pageUrl = window.location.href
       checkIfTokenExpired()
     }
   }, 1000)
-}
-
-async function getYearReq() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get("yearRequirements", function (data) {
-      console.log(data.yearRequirements)
-      if (Array.isArray(data.yearRequirements)) {
-        resolve(data.yearRequirements)
-      } else {
-        resolve([])
-      }
-    })
-  })
 }
 
 getRefToken()
