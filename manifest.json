@@ -5,21 +5,12 @@
   "description": "Kelkka1",
   "content_scripts": [
     {
-      "js": [
-        "scripts/karavaani.js"
-      ],
-      "matches": [
-        "https://www.nettikaravaani.com/*"
-      ]
+      "js": ["scripts/karavaani.js"],
+      "matches": ["https://www.nettikaravaani.com/*"]
     }
   ],
-  "permissions": [
-    "storage",
-    "activeTab",
-    "tabs",
-    "unlimitedStorage"
-  ],
+  "permissions": ["storage", "activeTab", "tabs", "unlimitedStorage"],
   "action": {
     "default_popup": "popup.html"
-  } 
+  }
 }
