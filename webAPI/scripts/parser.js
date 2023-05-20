@@ -11,12 +11,11 @@ let retryCounter = 0
 async function getListingIds() {
   const listingList = document.getElementById('listingData')
   const mainBlocks = listingList.getElementsByClassName("list-card__tricky-link")
-  console.log(mainBlocks)
+  var arr = Array.from(mainBlocks)
 
-  const listingInfoPromises = mainBlocks.map(mainBlock => {
-    const url = mainBlock[i].getAttribute('href')
+  const listingInfoPromises = arr.map(mainBlock => {
+    const url = mainBlock.getAttribute('href')
     const itemId = url.substring(url.lastIndexOf('/') + 1)
-    console.log(itemId)
     return getListingInfo(itemId)
   })
     
@@ -72,7 +71,8 @@ async function getListingIds() {
         listingInfo.engineType,
         listingInfo.engineStroke,
         listingInfo.engineFuelType,
-        "false"
+        listingInfo.engineMake,
+         "false"
       )
   })
 
@@ -82,7 +82,7 @@ async function getListingIds() {
 
   for (let i = 0; i < mainBlocks.length; i++) {
     const badge = createBadgeElement(fetchBoatDataResults[i], listingInfoResults[i])
-    listings[i].insertAdjacentElement("afterend", badge)
+    mainBlocks[i].insertAdjacentElement("afterend", badge)
   }
 }
 
@@ -95,7 +95,7 @@ async function getListingInfo(id) {
     const response = await fetch(url, options)
    if (response.ok) {
       const data = await response.json()
-
+      console.log(data)
       return data
     }
     throw new Error('Network response was not ok.')
@@ -117,6 +117,7 @@ async function fetchBoatData(
   engineType,
   engineStroke,
   engineFuelType,
+  modelSeachText,
   combineResult
   
   
@@ -132,10 +133,11 @@ async function fetchBoatData(
     engineType,
     engineStroke, 
     engineFuelType,
+    modelSeachText,
     combineResult
   })
 
-  console.log(yearFrom + " " + yearTo)
+  //console.log(yearFrom + " " + yearTo)
 
   const url = `https://api.nettix.fi/rest/boat/pricing-tool-count?${queryParams.toString()}`
 
@@ -249,19 +251,11 @@ async function checkIfTokenExpired() {
   }
 }
 
-function getAveragePrice(listings) {
-  let total = 0
-  for (let i = 0; i < listings.length; i++) {
-    total += listings[i].price
-  }
-
-  return (listings.length > 0) ? Math.round((total / listings.length)) : "-"
-}
 
 function createBadgeElement(info, listing) {
   const badge = document.createElement("p")
   badge.style.color = "white"
-  badge.textContent = `avg = ${getAveragePrice(info)}, # = ${info.length}`
+  badge.textContent = `ForsaleSellerAvg = ${info.forsale.seller.averagePrice}, SoldDealerAvg = ${info.sold.dealer.averagePrice}, SoldSellerAvg = ${info.sold.seller.averagePrice}`
   badge.style.background = "#FF7F50"
   badge.style.display = "inline-block"
   badge.style.padding = "5px"
@@ -282,7 +276,7 @@ function createBadgeElement(info, listing) {
   hoverText.style.padding = "5px"
   hoverText.style.borderRadius = "5px"
   hoverText.style.whiteSpace = "nowrap"
-  hoverText.textContent = "Average price / How many results"
+  hoverText.textContent = "Average prices from different sources / Search parameters"
 
   badge.appendChild(hoverText)
 
@@ -298,7 +292,7 @@ function createBadgeElement(info, listing) {
     if (!badge.querySelector(".infoBox")) {
       const infoBox = document.createElement("div")
       infoBox.classList.add("infoBox")
-      infoBox.textContent = "Vehicle Type: " + listing.boatType?.fi + ", Make: " + listing.make?.name + ", Model: " + listing.model?.name + ", Model Info: " + listing.modelInfo + ", Base: "
+      infoBox.textContent = "Boat Type: " + listing.boatType?.fi + ", Make: " + listing.make?.name + ", Model: " + listing.model + ", EngineHours: " + listing.engineHours + ", EngineType: " + listing.engineStroke?.fi + ", Fueltype: " + listing.engineFuelType?.fi +  ",Base: "
       badge.appendChild(infoBox)
 
       const yearRequirements = await getYearReq()
@@ -438,7 +432,6 @@ function checkIfPageChange() {
 async function getYearReq() {
   return new Promise((resolve) => {
     chrome.storage.local.get("yearRequirements", function (data) {
-      console.log(data.yearRequirements)
       if (Array.isArray(data.yearRequirements)) {
         resolve(data.yearRequirements)
       } else {
