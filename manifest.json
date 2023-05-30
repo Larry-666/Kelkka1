@@ -1,0 +1,25 @@
+{
+    "manifest_version": 3,
+    "name": "moto",
+    "version": "1.0",
+    "description": "nettimoto",
+    "content_scripts": [
+      {
+        "js": [
+          "scripts/nettimoto.js"
+        ],
+        "matches": [
+          "https://www.nettimoto.com/*"
+        ]
+      }
+    ],
+    "permissions": [
+      "storage",
+      "activeTab",
+      "tabs",
+      "unlimitedStorage"
+    ],
+    "action": {
+      "default_popup": "popup.html"
+    }
+  }
